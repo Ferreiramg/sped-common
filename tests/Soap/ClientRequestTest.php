@@ -14,6 +14,7 @@ class ClientRequestTest extends PHPUnit_Framework_TestCase
             ->getMock();
 
         $service = $this->getMockBuilder(NFePHP\Common\ServiceRequest::class)
+            ->disableOriginalConstructor()
             ->getMock();
 
         $service->expects($this->once())->method('getConfiguration')
