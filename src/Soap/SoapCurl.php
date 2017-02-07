@@ -18,7 +18,7 @@ namespace NFePHP\Common\Soap;
 use NFePHP\Common\Soap\SoapBase;
 use NFePHP\Common\Soap\SoapInterface;
 use NFePHP\Common\Exception\SoapException;
-
+use \NFePHP\Common\Services\AbstractServiceInterface;
 class SoapCurl extends SoapBase implements SoapInterface
 {
     /**
@@ -34,39 +34,25 @@ class SoapCurl extends SoapBase implements SoapInterface
      * @return string
      * @throws \NFePHP\Common\Exception\SoapException
      */
-    public function send(
-        $url,
-        $operation = '',
-        $action = '',
-        $soapver = SOAP_1_2,
-        $parameters = [],
-        $namespaces = [],
-        $request = '',
-        $soapheader = null
-    ) {
+    public function send(AbstractServiceInterface $service) {
         $response = '';
-        $envelope = $this->makeEnvelopeSoap(
-            $request,
-            $operation,
-            $namespaces,
-            $soapver,
-            $soapheader
-        );
+        $envelope = $this->makeEnvelopeSoap($service);
         $msgSize = strlen($envelope);
+        
         $parameters = [
             "Content-Type: application/soap+xml;charset=utf-8;",
             "Content-length: $msgSize"
         ];
-        if (!empty($action)) {
-            $parameters[0] .= "action=$action";
+        if (!empty($service->action)) {
+            $parameters[0] .= "action=$service->action";
         }
-        $this->requestHead = implode("\n", $parameters);
+        $this->requestHead = implode("\n", $service->parameters);
         $this->requestBody = $envelope;
         
         try {
             $oCurl = curl_init();
             $this->setCurlProxy($oCurl);
-            curl_setopt($oCurl, CURLOPT_URL, $url);
+            curl_setopt($oCurl, CURLOPT_URL, $service->url);
             curl_setopt($oCurl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
             curl_setopt($oCurl, CURLOPT_CONNECTTIMEOUT, $this->soaptimeout);
             curl_setopt($oCurl, CURLOPT_TIMEOUT, $this->soaptimeout + 20);
@@ -91,7 +77,7 @@ class SoapCurl extends SoapBase implements SoapInterface
             $this->responseHead = trim(substr($response, 0, $headsize));
             $this->responseBody = trim(substr($response, $headsize));
             $this->saveDebugFiles(
-                $operation,
+                $service,
                 $this->requestHead . "\n" . $this->requestBody,
                 $this->responseHead . "\n" . $this->responseBody
             );

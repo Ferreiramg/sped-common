@@ -14,14 +14,14 @@ namespace NFePHP\Common\Soap;
  * @author    Roberto L. Machado <linux.rlm at gmail dot com>
  * @link      http://github.com/nfephp-org/sped-nfse for the canonical source repository
  */
-
 use NFePHP\Common\Certificate;
 use NFePHP\Common\Soap\SoapInterface;
-use NFePHP\Common\Exception\SoapException;
 use Psr\Log\LoggerInterface;
+use \NFePHP\Common\Services\AbstractServiceInterface;
 
 abstract class SoapBase implements SoapInterface
 {
+
     //soap parameters
     protected $connection;
     protected $soapprotocol = self::SSL_DEFAULT;
@@ -45,7 +45,7 @@ abstract class SoapBase implements SoapInterface
     public $soaperror = '';
     public $soapinfo = [];
     public $debugmode = false;
-    
+
     /**
      * Constructor
      * @param Certificate $certificate
@@ -57,15 +57,7 @@ abstract class SoapBase implements SoapInterface
         $this->certificate = $certificate;
         $this->saveTemporarilyKeyFiles();
     }
-    
-    /**
-     * Destructor
-     */
-    public function __destruct()
-    {
-        $this->removeTemporarilyKeyFiles();
-    }
-    
+
     /**
      * Set debug mode, this mode will save soap envelopes in temporary directory
      * @param bool $value
@@ -74,7 +66,7 @@ abstract class SoapBase implements SoapInterface
     {
         $this->debugmode = $value;
     }
-    
+
     /**
      * Set certificate class for SSL comunications
      * @param Certificate $certificate
@@ -84,7 +76,7 @@ abstract class SoapBase implements SoapInterface
         $this->certificate = $certificate;
         $this->saveTemporarilyKeyFiles();
     }
-    
+
     /**
      * Set logger class
      * @param LoggerInterface $logger
@@ -93,7 +85,7 @@ abstract class SoapBase implements SoapInterface
     {
         $this->logger = $logger;
     }
-    
+
     /**
      * Set timeout for communication
      * @param int $timesecs
@@ -102,7 +94,7 @@ abstract class SoapBase implements SoapInterface
     {
         $this->soaptimeout = $timesecs;
     }
-    
+
     /**
      * Set security protocol
      * @param int $protocol
@@ -111,12 +103,12 @@ abstract class SoapBase implements SoapInterface
     {
         $this->soapprotocol = $protocol;
     }
-    
+
     public function setSoapPrefix($prefixes)
     {
         $this->prefixes = $prefixes;
     }
-    
+
     /**
      * Set proxy parameters
      * @param string $ip
@@ -131,18 +123,9 @@ abstract class SoapBase implements SoapInterface
         $this->proxyUser = $user;
         $this->proxyPass = $password;
     }
-    
-    abstract public function send(
-        $url,
-        $operation = '',
-        $action = '',
-        $soapver = SOAP_1_2,
-        $parameters = [],
-        $namespaces = [],
-        $request = '',
-        $soapheader = null
-    );
-    
+
+    abstract public function send(AbstractServiceInterface $service);
+
     /**
      * Mount soap envelope
      * @param string $request
@@ -151,55 +134,34 @@ abstract class SoapBase implements SoapInterface
      * @param \SOAPHeader $header
      * @return string
      */
-    protected function makeEnvelopeSoap(
-        $request,
-        $operation,
-        $namespaces,
-        $soapver = SOAP_1_2,
-        $header = null
-    ) {
-        $prefix = $this->prefixes[$soapver];
-        $envelope = "<$prefix:Envelope";
-        foreach ($namespaces as $key => $value) {
-            $envelope .= " $key=\"$value\"";
-        }
-        $envelope .= ">";
-        $soapheader = "<$prefix:Header/>";
-        if (!empty($header)) {
-            $ns = !empty($header->namespace) ? $header->namespace : '';
-            $name = $header->name;
-            $soapheader = "<$prefix:Header>";
-            $soapheader .= "<$name xmlns=\"$ns\">";
-            foreach ($header->data as $key => $value) {
-                $soapheader .= "<$key>$value</$key>";
-            }
-            $soapheader .= "</$name></$prefix:Header>";
-        }
-        $envelope .= $soapheader;
-        $envelope .= "<$prefix:Body>$request</$prefix:Body>"
-            . "</$prefix:Envelope>";
-        return $envelope;
+    protected function makeEnvelopeSoap(AbstractServiceInterface $service)
+    {
+        $prefix = $this->prefixes[$service->soapver];
+        $content = <<<XML
+            <?xml version="1.0" encoding="utf-8"?><$prefix:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:$prefix="http://www.w3.org/2003/05/soap-envelope"><$prefix:Header>$service->soapheader</$prefix:Header><$prefix:Body>$service->request</$prefix:Body></$prefix:Envelope>
+XML;
+        return $content;
     }
-    
+
     /**
      * Temporarily saves the certificate keys for use cURL or SoapClient
      */
     protected function saveTemporarilyKeyFiles()
     {
         if (is_object($this->certificate)) {
-            $this->tempdir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'certs'.DIRECTORY_SEPARATOR;
-            if (! is_dir($this->tempdir)) {
+            $this->tempdir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR;
+            if (!is_dir($this->tempdir)) {
                 mkdir($this->tempdir);
             }
-            $this->prifile = tempnam($this->tempdir, 'Pri').'.pem';
-            $this->pubfile = tempnam($this->tempdir, 'Pub').'.pem';
-            $this->certfile = tempnam($this->tempdir, 'Cert').'.pem';
+            $this->prifile = tempnam($this->tempdir, 'Pri') . '.pem';
+            $this->pubfile = tempnam($this->tempdir, 'Pub') . '.pem';
+            $this->certfile = tempnam($this->tempdir, 'Cert') . '.pem';
             file_put_contents($this->prifile, $this->certificate->privateKey);
             file_put_contents($this->pubfile, $this->certificate->publicKey);
-            file_put_contents($this->certfile, $this->certificate->privateKey.$this->certificate->publicKey);
+            file_put_contents($this->certfile, $this->certificate->privateKey . $this->certificate->publicKey);
         }
     }
-    
+
     /**
      * Deletes the certificate keys
      */
@@ -208,11 +170,11 @@ abstract class SoapBase implements SoapInterface
         unlink($this->prifile);
         unlink($this->pubfile);
         unlink($this->certfile);
-        unlink(substr($this->prifile, 0, strlen($this->prifile)-4));
-        unlink(substr($this->pubfile, 0, strlen($this->pubfile)-4));
-        unlink(substr($this->certfile, 0, strlen($this->certfile)-4));
+        unlink(substr($this->prifile, 0, strlen($this->prifile) - 4));
+        unlink(substr($this->pubfile, 0, strlen($this->pubfile) - 4));
+        unlink(substr($this->certfile, 0, strlen($this->certfile) - 4));
     }
-    
+
     /**
      * Save request envelope and response for debug reasons
      * @param string $operation
@@ -229,7 +191,7 @@ abstract class SoapBase implements SoapInterface
             . DIRECTORY_SEPARATOR
             . 'soap'
             . DIRECTORY_SEPARATOR;
-        if (! is_dir($tempdir)) {
+        if (!is_dir($tempdir)) {
             mkdir($tempdir, 0777);
         }
         $num = date('mdHis');
